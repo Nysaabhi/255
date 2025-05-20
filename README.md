@@ -17484,14 +17484,26 @@ function initializeOrderForm() {
       orderDetails += `\n*Order Total:* ₹${orderTotal.toFixed(2)}`;
       
       // Send order based on store's preferred contact method
-      if (store.details.support?.primaryContact === "whatsapp" && store.details.support.whatsapp) {
-        const whatsappUrl = `https://wa.me/${store.details.support.whatsapp}?text=${encodeURIComponent(orderDetails)}`;
-        window.open(whatsappUrl, '_blank');
-      } else if (store.details.support?.primaryContact === "email" && store.details.support.email) {
+      if (store.details.support?.whatsapp) {
+        // Use the store's WhatsApp link directly if available
+        if (store.details.support.whatsapp.includes('http')) {
+          // If it's already a full WhatsApp link
+          const whatsappUrl = `${store.details.support.whatsapp}&text=${encodeURIComponent(orderDetails)}`;
+          window.open(whatsappUrl, '_blank');
+        } else {
+          // If it's just a phone number
+          const phone = store.details.support.whatsapp.replace(/[^\d]/g, '');
+          const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(orderDetails)}`;
+          window.open(whatsappUrl, '_blank');
+        }
+      } else if (store.details.support?.email) {
         const subject = `New Order from ${customerName} - ${store.details.name}`;
         const body = orderDetails.replace(/\*/g, '');
         const mailtoUrl = `mailto:${store.details.support.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
         window.location.href = mailtoUrl;
+      } else if (store.details.support?.phone) {
+        // Fallback to regular phone call if no WhatsApp or email
+        window.location.href = `tel:${store.details.support.phone}`;
       }
     }
     
