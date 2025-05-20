@@ -17431,85 +17431,114 @@ function initializeOrderForm() {
       ordersByStore[storeName].items.push(item);
     });
     
-    // Process each store's order separately
+    // Calculate grand total
+    const grandTotal = cartState.appliedCoupon ? cartState.discountedTotal : cartState.total;
+    
+    // Create comprehensive order message
+    let orderDetails = `*MULTI-STORE ORDER SUMMARY*\n\n`;
+    orderDetails += `*Customer Details:*\n`;
+    orderDetails += `👤 Name: ${customerName}\n`;
+    orderDetails += `📞 Phone: ${customerPhone}\n`;
+    orderDetails += `🏠 Address: ${customerAddress}\n`;
+    if (formattedDeliveryTime) {
+      orderDetails += `⏰ Preferred Delivery Time: ${formattedDeliveryTime}\n`;
+    }
+    if (specialInstructions) {
+      orderDetails += `📝 Special Instructions: ${specialInstructions}\n`;
+    }
+    orderDetails += `💳 Payment Method: ${paymentMethod}\n\n`;
+    
+    orderDetails += `*Order Contains Items From ${Object.keys(ordersByStore).length} Stores*\n\n`;
+    
+    // Add each store's order details
+    let storeCounter = 1;
     for (const storeName in ordersByStore) {
       const storeOrder = ordersByStore[storeName];
       const store = storeOrder.store;
       const items = storeOrder.items;
       
-      // Calculate subtotal for this store's order
+      // Calculate store subtotal
       const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
       
-      // Apply coupon proportionally if one was applied
-      let orderTotal = subtotal;
-      let discountMessage = '';
+      // Calculate store's portion of discount if applied
+      let storeTotal = subtotal;
+      let storeDiscountMessage = '';
       
       if (cartState.appliedCoupon) {
         const discountRatio = subtotal / cartState.total;
         const discountAmount = cartState.appliedCoupon.discountAmount * discountRatio;
-        orderTotal = subtotal - discountAmount;
+        storeTotal = subtotal - discountAmount;
         
-        discountMessage = `\n\n*Discount Applied:*\n` +
-                         `Coupon Code: ${cartState.appliedCoupon.code}\n` +
-                         `Discount: ${(cartState.appliedCoupon.discount * 100)}%\n` +
-                         `Discount Amount: -₹${discountAmount.toFixed(2)}\n` +
-                         `\n*Subtotal:* ₹${subtotal.toFixed(2)}` +
-                         `\n*Discount:* -₹${discountAmount.toFixed(2)}`;
+        storeDiscountMessage = `\n*Discount Applied:* ${(cartState.appliedCoupon.discount * 100)}% (₹${discountAmount.toFixed(2)})`;
       }
       
-      // Create order details message for this store
-      let orderDetails = `*NEW ORDER NOTIFICATION*\n\n`;
-      orderDetails += `*Store:* ${store.details.name}\n`;
-      orderDetails += `*Order Time:* ${new Date().toLocaleString('en-IN')}\n\n`;
+      orderDetails += `*STORE ${storeCounter}: ${store.details.name}*\n`;
+      orderDetails += `📍 ${store.details.address}\n`;
+      orderDetails += `📞 ${store.details.support?.phone || 'Not specified'}\n`;
+      orderDetails += `⏰ ${store.details.timings || 'Not specified'}\n\n`;
       
-      orderDetails += `*Customer Details:*\n`;
-      orderDetails += `👤 Name: ${customerName}\n`;
-      orderDetails += `📞 Phone: ${customerPhone}\n`;
-      orderDetails += `🏠 Address: ${customerAddress}\n`;
-      if (formattedDeliveryTime) {
-        orderDetails += `⏰ Delivery Time: ${formattedDeliveryTime}\n`;
-      }
-      if (specialInstructions) {
-        orderDetails += `📝 Special Instructions: ${specialInstructions}\n`;
-      }
-      orderDetails += `💳 Payment Method: ${paymentMethod}\n\n`;
-      
-      orderDetails += `*Order Items:*\n`;
+      orderDetails += `*Items (${items.length}):*\n`;
       orderDetails += items.map(item => 
         `- ${item.name} ${item.variant ? `(${item.variant})` : ''} × ${item.quantity}: ₹${(item.price * item.quantity).toFixed(2)}`
       ).join('\n');
       
-      // Add discount information if coupon was applied
-      orderDetails += discountMessage;
-      orderDetails += `\n*Order Total:* ₹${orderTotal.toFixed(2)}`;
+      orderDetails += `\n*Store Subtotal:* ₹${subtotal.toFixed(2)}`;
+      orderDetails += storeDiscountMessage;
+      orderDetails += `\n*Store Total:* ₹${storeTotal.toFixed(2)}\n\n`;
       
-      // Send order based on store's preferred contact method
-      if (store.details.support?.whatsapp) {
-        // Use the store's WhatsApp link directly if available
-        if (store.details.support.whatsapp.includes('http')) {
-          // If it's already a full WhatsApp link
-          const whatsappUrl = `${store.details.support.whatsapp}&text=${encodeURIComponent(orderDetails)}`;
-          window.open(whatsappUrl, '_blank');
-        } else {
-          // If it's just a phone number
-          const phone = store.details.support.whatsapp.replace(/[^\d]/g, '');
-          const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(orderDetails)}`;
-          window.open(whatsappUrl, '_blank');
-        }
-      } else if (store.details.support?.email) {
-        const subject = `New Order from ${customerName} - ${store.details.name}`;
-        const body = orderDetails.replace(/\*/g, '');
-        const mailtoUrl = `mailto:${store.details.support.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-        window.location.href = mailtoUrl;
-      } else if (store.details.support?.phone) {
-        // Fallback to regular phone call if no WhatsApp or email
-        window.location.href = `tel:${store.details.support.phone}`;
+      // Add store separator if not last store
+      if (storeCounter < Object.keys(ordersByStore).length) {
+        orderDetails += `------------------------\n\n`;
       }
+      
+      storeCounter++;
+    }
+    
+    // Add grand total and summary
+    orderDetails += `*GRAND ORDER TOTAL:* ₹${grandTotal.toFixed(2)}\n\n`;
+    
+    // Add coupon information if applied
+    if (cartState.appliedCoupon) {
+      orderDetails += `*Coupon Applied:* ${cartState.appliedCoupon.code}\n`;
+      orderDetails += `*Total Savings:* ₹${cartState.appliedCoupon.discountAmount.toFixed(2)}\n\n`;
+    }
+    
+    // Find primary store for contact (first store with WhatsApp or first store)
+    let primaryStore = null;
+    for (const storeName in ordersByStore) {
+      const store = ordersByStore[storeName].store;
+      if (store.details.support?.whatsapp) {
+        primaryStore = store;
+        break;
+      }
+    }
+    primaryStore = primaryStore || ordersByStore[Object.keys(ordersByStore)[0]].store;
+    
+    // Send the comprehensive order
+    if (primaryStore.details.support?.whatsapp) {
+      // Use the store's WhatsApp link directly if available
+      if (primaryStore.details.support.whatsapp.includes('http')) {
+        // If it's already a full WhatsApp link
+        const whatsappUrl = `${primaryStore.details.support.whatsapp}&text=${encodeURIComponent(orderDetails)}`;
+        window.open(whatsappUrl, '_blank');
+      } else {
+        // If it's just a phone number
+        const phone = primaryStore.details.support.whatsapp.replace(/[^\d]/g, '');
+        const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(orderDetails)}`;
+        window.open(whatsappUrl, '_blank');
+      }
+    } else if (primaryStore.details.support?.email) {
+      const subject = `Multi-Store Order from ${customerName}`;
+      const body = orderDetails.replace(/\*/g, '');
+      const mailtoUrl = `mailto:${primaryStore.details.support.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      window.location.href = mailtoUrl;
+    } else if (primaryStore.details.support?.phone) {
+      // Fallback to regular phone call if no WhatsApp or email
+      window.location.href = `tel:${primaryStore.details.support.phone}`;
     }
     
     // Show confirmation with the correct total
-    const displayTotal = cartState.appliedCoupon ? cartState.discountedTotal : cartState.total;
-    showOrderConfirmation(customerName, displayTotal.toFixed(2));
+    showOrderConfirmation(customerName, grandTotal.toFixed(2));
     
     // Clear cart and close form
     clearCart();
